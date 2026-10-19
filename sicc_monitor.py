@@ -12,7 +12,7 @@ HEADERS = {
     "User-Agent": "Mozilla/5.0 (compatible; HonduComprasMonitor/0.5)",
     "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
 }
-TIMEOUT = (10, 75)
+TIMEOUT = (10, 120)
 
 
 def build_form_payload(form):
