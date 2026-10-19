@@ -20,7 +20,7 @@ Fase de diagnóstico de acceso. `discover.py` prueba el portal oficial y la ruta
 
 ## Ejecución
 
-GitHub Actions ejecuta el diagnóstico aproximadamente cada 15 minutos y permite iniciarlo manualmente desde la pestaña Actions.
+GitHub Actions ejecuta la verificación cada 5 minutos y permite iniciarla manualmente desde la pestaña Actions.
 
 ## Próximos pasos
 
