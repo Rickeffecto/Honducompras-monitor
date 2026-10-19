@@ -18,12 +18,12 @@ jobs:
     timeout-minutes: 5
     steps:
       - name: Descargar repositorio
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
       - name: Preparar Python
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v6
         with:
           python-version: "3.12"
       - name: Instalar dependencias
         run: pip install -r requirements.txt
-      - name: Inspeccionar páginas públicas
+      - name: Inspeccionar búsqueda oficial de HonduCompras
         run: python discover.py
