@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Submit the official HonduCompras SICC search form and inspect its results."""
 from urllib.parse import urljoin
+from datetime import date, timedelta
 import sys
 
 import requests
@@ -11,7 +12,7 @@ HEADERS = {
     "User-Agent": "Mozilla/5.0 (compatible; HonduComprasMonitor/0.5)",
     "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
 }
-TIMEOUT = (10, 30)
+TIMEOUT = (10, 75)
 
 
 def build_form_payload(form):
@@ -55,16 +56,26 @@ def main():
         submit = form.find("input", attrs={"type": "submit"})
         if submit and submit.get("name"):
             payload.append((submit["name"], submit.get("value", "")))
+        # The blank/default form searches too much history and can stall the legacy server.
+        # Narrow the first validation to the most recent 14 days.
+        start_date = (date.today() - timedelta(days=14)).strftime("%d/%m/%Y")
+        end_date = date.today().strftime("%d/%m/%Y")
+        date_fields = {
+            "ctl00_cphCuerpo_wpParametros_wdInicio_input": start_date,
+            "ctl00_cphCuerpo_wpParametros_wdFin_input": end_date,
+        }
+        payload = [(name, date_fields.get(name, value)) for name, value in payload]
         action = urljoin(response.url, form.get("action") or response.url)
-        print("GET_STATUS:", response.status_code)
-        print("FORM_ACTION:", action)
-        print("FORM_FIELDS_SENT:", len(payload))
-        print("SUBMITTING_SEARCH: yes")
+        print("GET_STATUS:", response.status_code, flush=True)
+        print("FORM_ACTION:", action, flush=True)
+        print("FORM_FIELDS_SENT:", len(payload), flush=True)
+        print("SEARCH_DATE_RANGE:", start_date, "to", end_date, flush=True)
+        print("SUBMITTING_SEARCH: yes", flush=True)
 
         result = session.post(action, data=payload, headers={"Referer": response.url}, timeout=TIMEOUT)
-        print("POST_STATUS:", result.status_code)
-        print("POST_FINAL_URL:", result.url)
-        print("POST_CONTENT_TYPE:", result.headers.get("content-type", ""))
+        print("POST_STATUS:", result.status_code, flush=True)
+        print("POST_FINAL_URL:", result.url, flush=True)
+        print("POST_CONTENT_TYPE:", result.headers.get("content-type", ""), flush=True)
         result.raise_for_status()
         page = BeautifulSoup(result.text, "html.parser")
         title = page.title.get_text(" ", strip=True) if page.title else "(sin título)"
