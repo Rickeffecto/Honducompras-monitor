@@ -1,14 +1,19 @@
 #!/usr/bin/env python3
 """Read-only discovery of HonduCompras' official advanced process search.
 
-TLS certificate verification remains enabled. This script deliberately does not
-use SEFIN's EDCA API and does not submit search forms or send notifications.
+WARNING: TLS certificate verification is disabled because the official portal's
+certificate currently appears expired. Use only as a temporary diagnostic.
+This script does not use SEFIN's EDCA API or send notifications.
 """
 from urllib.parse import urljoin, urlparse
 import requests
 from bs4 import BeautifulSoup
 from requests.adapters import HTTPAdapter
 from urllib3.util.retry import Retry
+from urllib3.exceptions import InsecureRequestWarning
+
+# Explicitly suppress the warning caused by the temporary SSL bypass below.
+requests.packages.urllib3.disable_warnings(category=InsecureRequestWarning)
 
 OFFICIAL_HOSTS = {
     "honducompras.gob.hn", "www.honducompras.gob.hn",
@@ -18,8 +23,6 @@ START_URLS = [
     "https://honducompras.gob.hn/",
     "https://www.honducompras.gob.hn/",
 ]
-# ONCAE directs users to Búsqueda Avanzada from the official HonduCompras portal.
-# This is the known historic search page linked by official process records.
 KNOWN_ADVANCED_SEARCH = "https://sicc.honducompras.gob.hn/HC/procesos/busquedahistorico.aspx"
 SEARCH_TERMS = (
     "búsqueda avanzada", "busqueda avanzada", "búsqueda de procesos",
@@ -27,7 +30,7 @@ SEARCH_TERMS = (
     "compra", "contratación", "contratacion",
 )
 HEADERS = {
-    "User-Agent": "HonduComprasMonitor/0.2 (read-only public procurement discovery)",
+    "User-Agent": "HonduComprasMonitor/0.3 (read-only public procurement discovery)",
     "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
 }
 TIMEOUT = (10, 20)
@@ -36,6 +39,8 @@ MAX_LINKS = 80
 
 def make_session():
     session = requests.Session()
+    # TEMPORARY workaround: certificate verification disabled at user's request.
+    session.verify = False
     retry = Retry(
         total=2, connect=2, read=1, status=1, backoff_factor=1,
         status_forcelist=(429, 500, 502, 503, 504),
@@ -70,7 +75,7 @@ def inspect_page(session, url):
         response.raise_for_status()
     except requests.RequestException as exc:
         print("REQUEST ERROR:", type(exc).__name__, str(exc)[:600])
-        print("TLS verification is enabled; no insecure certificate bypass was attempted.")
+        print("SSL verification is temporarily disabled for this diagnostic.")
         return []
 
     if not is_official_url(response.url):
@@ -125,21 +130,16 @@ def main():
             if url not in candidates:
                 candidates.append(url)
 
-    # If the homepage is unavailable or omits its menu in server-rendered HTML,
-    # still test the known official advanced-search endpoint directly.
     if KNOWN_ADVANCED_SEARCH not in candidates:
         candidates.append(KNOWN_ADVANCED_SEARCH)
 
     print("\nAdvanced-search candidates to test:", len(candidates))
-    successful = 0
     for url in candidates[:10]:
-        result = inspect_page(session, url)
-        if result is not None:
-            successful += 1
+        inspect_page(session, url)
 
     print("\nRESULT: discovery run finished.")
     print("This is still a diagnostic, not a verified new-process monitor.")
-    print("No SEFIN API is used; TLS verification remains enabled; no Telegram messages are sent.")
+    print("No SEFIN API is used; SSL verification is temporarily disabled; no Telegram messages are sent.")
 
 
 if __name__ == "__main__":
