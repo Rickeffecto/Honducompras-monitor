@@ -1,4 +1,4 @@
-name: Diagnóstico HonduCompras SICC
+name: Monitor HonduCompras SICC
 
 on:
   push:
@@ -27,5 +27,5 @@ jobs:
           python-version: "3.12"
       - name: Instalar dependencias
         run: pip install -r requirements.txt
-      - name: Probar URL HTTP y HTTPS de búsqueda histórica
-        run: python sicc_probe.py
+      - name: Consultar búsqueda avanzada de HonduCompras por HTTP
+        run: python sicc_monitor.py
