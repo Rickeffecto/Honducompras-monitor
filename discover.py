@@ -10,14 +10,22 @@ from bs4 import BeautifulSoup
 from requests.adapters import HTTPAdapter
 from urllib3.util.retry import Retry
 
-OFFICIAL_HOSTS = {"honducompras.gob.hn", "www.honducompras.gob.hn", "sicc.honducompras.gob.hn", "h1.honducompras.gob.hn"}
+OFFICIAL_HOSTS = {
+    "honducompras.gob.hn", "www.honducompras.gob.hn",
+    "sicc.honducompras.gob.hn", "h1.honducompras.gob.hn",
+}
 START_URLS = [
     "https://honducompras.gob.hn/",
     "https://www.honducompras.gob.hn/",
 ]
-SEARCH_TERMS = ("búsqueda avanzada", "busqueda avanzada", "búsqueda de procesos",
-                "busqueda de procesos", "proceso", "licitación", "licitacion",
-                "compra", "contratación", "contratacion")
+# ONCAE directs users to Búsqueda Avanzada from the official HonduCompras portal.
+# This is the known historic search page linked by official process records.
+KNOWN_ADVANCED_SEARCH = "https://sicc.honducompras.gob.hn/HC/procesos/busquedahistorico.aspx"
+SEARCH_TERMS = (
+    "búsqueda avanzada", "busqueda avanzada", "búsqueda de procesos",
+    "busqueda de procesos", "proceso", "licitación", "licitacion",
+    "compra", "contratación", "contratacion",
+)
 HEADERS = {
     "User-Agent": "HonduComprasMonitor/0.2 (read-only public procurement discovery)",
     "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
@@ -109,7 +117,6 @@ def main():
     for url in START_URLS:
         all_links.extend(inspect_page(session, url))
 
-    # Follow only official links explicitly identified as advanced/process search.
     candidates = []
     for label, url in all_links:
         if any(term in f"{label} {url}".lower() for term in
@@ -118,16 +125,21 @@ def main():
             if url not in candidates:
                 candidates.append(url)
 
-    if not candidates:
-        print("\nRESULT: No se could not verify a working advanced-search link from the official homepage.")
-        print("This run is diagnostic only; it has not confirmed access to current process listings.")
-        return
+    # If the homepage is unavailable or omits its menu in server-rendered HTML,
+    # still test the known official advanced-search endpoint directly.
+    if KNOWN_ADVANCED_SEARCH not in candidates:
+        candidates.append(KNOWN_ADVANCED_SEARCH)
 
-    print("\nAdvanced-search candidates found:", len(candidates))
+    print("\nAdvanced-search candidates to test:", len(candidates))
+    successful = 0
     for url in candidates[:10]:
-        inspect_page(session, url)
+        result = inspect_page(session, url)
+        if result is not None:
+            successful += 1
 
-    print("\nNOTE: This diagnostic does not yet claim new-process detection or send Telegram alerts.")
+    print("\nRESULT: discovery run finished.")
+    print("This is still a diagnostic, not a verified new-process monitor.")
+    print("No SEFIN API is used; TLS verification remains enabled; no Telegram messages are sent.")
 
 
 if __name__ == "__main__":
