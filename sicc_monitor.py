@@ -8,6 +8,7 @@ import os
 from pathlib import Path
 import re
 import sys
+import time
 
 import requests
 from bs4 import BeautifulSoup
@@ -80,6 +81,27 @@ def telegram_send(token, chat_id, message):
     response.raise_for_status()
     if not response.json().get("ok"):
         raise RuntimeError("Telegram no confirmó el envío.")
+
+
+def post_search_with_retries(session, action, payload, referer):
+    """Retry transient SICC failures; the search POST is read-only."""
+    retryable_statuses = {429, 500, 502, 503, 504}
+    for attempt in range(1, 4):
+        try:
+            response = session.post(
+                action, data=payload, headers={"Referer": referer}, timeout=TIMEOUT
+            )
+            print("POST_ATTEMPT:", f"{attempt}/3", "STATUS:", response.status_code, flush=True)
+            if response.status_code not in retryable_statuses or attempt == 3:
+                return response
+        except requests.RequestException as exc:
+            print("POST_ATTEMPT:", f"{attempt}/3", "ERROR:", type(exc).__name__, flush=True)
+            if attempt == 3:
+                raise
+        delay = 5 * attempt
+        print("POST_RETRY_WAIT_SECONDS:", delay, flush=True)
+        time.sleep(delay)
+    raise RuntimeError("La búsqueda de HonduCompras agotó los reintentos.")
 
 
 def normalized(text):
@@ -166,7 +188,7 @@ def main():
         print("SEARCH_DATE_RANGE:", start_date, "to", end_date, flush=True)
         print("SUBMITTING_SEARCH: yes", flush=True)
 
-        result = session.post(action, data=payload, headers={"Referer": response.url}, timeout=TIMEOUT)
+        result = post_search_with_retries(session, action, payload, response.url)
         print("POST_STATUS:", result.status_code, flush=True)
         print("POST_FINAL_URL:", result.url, flush=True)
         print("POST_CONTENT_TYPE:", result.headers.get("content-type", ""), flush=True)
