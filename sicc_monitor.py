@@ -2,6 +2,10 @@
 """Submit the official HonduCompras SICC search form and inspect its results."""
 from urllib.parse import urljoin
 from datetime import date, timedelta
+import hashlib
+import json
+import os
+from pathlib import Path
 import sys
 
 import requests
@@ -13,6 +17,8 @@ HEADERS = {
     "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
 }
 TIMEOUT = (10, 120)
+STATE_FILE = Path("seen_processes.json")
+TELEGRAM_API = "https://api.telegram.org/bot{token}/sendMessage"
 
 
 def build_form_payload(form):
@@ -41,7 +47,59 @@ def build_form_payload(form):
     return payload
 
 
+def load_seen():
+    try:
+        data = json.loads(STATE_FILE.read_text(encoding="utf-8"))
+        return set(data if isinstance(data, list) else [])
+    except (OSError, json.JSONDecodeError):
+        return set()
+
+
+def save_seen(seen):
+    STATE_FILE.write_text(json.dumps(sorted(seen), ensure_ascii=False, indent=2), encoding="utf-8")
+
+
+def telegram_send(token, chat_id, message):
+    response = requests.post(
+        TELEGRAM_API.format(token=token),
+        data={"chat_id": chat_id, "text": message, "disable_web_page_preview": True},
+        timeout=(10, 20),
+    )
+    response.raise_for_status()
+    if not response.json().get("ok"):
+        raise RuntimeError("Telegram no confirmó el envío.")
+
+
+def extract_processes(page, base_url):
+    """Conservatively select tables that look like procurement results."""
+    processes = []
+    keywords = ("proceso", "licitacion", "licitación", "institucion", "institución",
+                "objeto", "modalidad", "contratacion", "contratación", "publicacion", "publicación")
+    for table in page.find_all("table"):
+        rows = table.find_all("tr")
+        if len(rows) < 2:
+            continue
+        first_cells = rows[0].find_all(["th", "td"])
+        header = " ".join(cell.get_text(" ", strip=True).lower() for cell in first_cells)
+        if not any(word in header for word in keywords):
+            continue
+        for row in rows[1:]:
+            cells = row.find_all(["th", "td"])
+            parts = [" ".join(cell.stripped_strings) for cell in cells]
+            text = " | ".join(part for part in parts if part)
+            if not text:
+                continue
+            links = [urljoin(base_url, a["href"]) for a in row.find_all("a", href=True)]
+            if not links and len(parts) < 2:
+                continue
+            identity = hashlib.sha256((text + "|" + "|".join(links)).encode("utf-8")).hexdigest()
+            processes.append({"id": identity, "text": text[:1200], "url": links[0] if links else ""})
+    return processes
+
+
 def main():
+    seen = load_seen()
+    save_seen(seen)  # Ensure the workflow cache has a file even while SICC is unavailable.
     with requests.Session() as session:
         session.headers.update(HEADERS)
         response = session.get(URL, timeout=TIMEOUT)
@@ -84,36 +142,34 @@ def main():
         print("PAGE_TEXT_PREVIEW:", text[:1800])
 
         tables = page.find_all("table")
-        candidates = []
-        for table in tables:
-            rows = table.find_all("tr")
-            if len(rows) < 2:
-                continue
-            parsed = []
-            for row in rows[:8]:
-                cells = row.find_all(["th", "td"])
-                values = [" ".join(cell.stripped_strings) for cell in cells]
-                if any(values):
-                    parsed.append(" | ".join(values))
-            if parsed:
-                candidates.append((len(rows) - 1, parsed, table))
-        candidates.sort(key=lambda item: item[0], reverse=True)
+        processes = extract_processes(page, result.url)
         print("TABLE_COUNT:", len(tables))
-        print("CANDIDATE_RESULT_TABLES:", len(candidates))
-        result_count = 0
-        for index, (row_count, parsed, table) in enumerate(candidates[:5], 1):
-            print(f"TABLE_{index}_DATA_ROWS:", row_count)
-            for line in parsed[:6]:
-                print(f"TABLE_{index}_ROW:", line[:500])
-            for link in table.find_all("a", href=True)[:5]:
-                print(f"TABLE_{index}_LINK:", link.get_text(" ", strip=True)[:120], urljoin(result.url, link["href"]))
-            result_count = max(result_count, row_count)
-        print("RESULT_ROWS_ESTIMATE:", result_count)
-        if result_count == 0:
-            print("NOTE: No table with data rows detected; inspect page text and WebForms postback behavior.")
-        # A successful HTTP response is not proof that result extraction is production-ready.
+        print("PROCUREMENT_ROWS_DETECTED:", len(processes))
+        for process in processes[:5]:
+            print("PROCESS_PREVIEW:", process["text"][:500])
+            if process["url"]:
+                print("PROCESS_URL:", process["url"])
+
+        new_processes = [item for item in processes if item["id"] not in seen]
+        print("NEW_PROCESSES:", len(new_processes))
+        token = os.getenv("TELEGRAM_BOT_TOKEN", "").strip()
+        chat_id = os.getenv("TELEGRAM_CHAT_ID", "").strip()
+        if new_processes and token and chat_id:
+            sent_ids = []
+            for item in new_processes:
+                message = "📢 Nueva oportunidad en HonduCompras\\n\\n" + item["text"]
+                if item["url"]:
+                    message += "\\n\\nVer proceso: " + item["url"]
+                telegram_send(token, chat_id, message[:4000])
+                sent_ids.append(item["id"])
+            seen.update(sent_ids)
+            print("TELEGRAM_SENT:", len(sent_ids))
+        elif new_processes:
+            print("TELEGRAM_NOT_CONFIGURED: add TELEGRAM_BOT_TOKEN and TELEGRAM_CHAT_ID in repository Actions secrets.")
+        else:
+            print("No se detectaron procesos nuevos según las tablas reconocidas.")
+        save_seen(seen)
         print("SEARCH_SUBMISSION_COMPLETED: yes")
-        print("TELEGRAM_NOTIFICATIONS: not configured by this diagnostic")
         if result.status_code >= 400:
             return 1
 
