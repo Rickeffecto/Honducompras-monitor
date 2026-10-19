@@ -5,7 +5,7 @@ on:
     branches: [main]
   workflow_dispatch:
   schedule:
-    - cron: "*/15 * * * *"
+    - cron: "*/5 * * * *"
 
 permissions:
   contents: read
@@ -25,7 +25,23 @@ jobs:
         uses: actions/setup-python@v6
         with:
           python-version: "3.12"
+      - name: Restaurar procesos ya notificados
+        uses: actions/cache/restore@v4
+        with:
+          path: seen_processes.json
+          key: honducompras-seen-${{ github.run_id }}
+          restore-keys: |
+            honducompras-seen-
       - name: Instalar dependencias
         run: pip install -r requirements.txt
-      - name: Consultar búsqueda avanzada de HonduCompras por HTTP
+      - name: Verificar búsqueda avanzada y notificar procesos nuevos
+        env:
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
         run: python sicc_monitor.py
+      - name: Guardar identificadores vistos
+        if: always()
+        uses: actions/cache/save@v4
+        with:
+          path: seen_processes.json
+          key: honducompras-seen-${{ github.run_id }}
