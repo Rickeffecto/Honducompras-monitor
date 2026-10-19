@@ -1,4 +1,4 @@
-name: Diagnóstico API SEFIN EDCA
+name: Diagnóstico HonduCompras SICC
 
 on:
   push:
@@ -27,5 +27,5 @@ jobs:
           python-version: "3.12"
       - name: Instalar dependencias
         run: pip install -r requirements.txt
-      - name: Probar API oficial EDCA de SEFIN
-        run: python sefin_probe.py
+      - name: Probar URL HTTP y HTTPS de búsqueda histórica
+        run: python sicc_probe.py
