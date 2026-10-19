@@ -83,7 +83,7 @@ def telegram_send(token, chat_id, message):
 
 
 def normalized(text):
-    return re.sub(r"\s+, " ", text or "").strip().lower()
+    return re.sub(r"\s+", " ", text or "").strip().lower()
 
 
 def find_results_tables(page):
