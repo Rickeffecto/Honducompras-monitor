@@ -157,9 +157,9 @@ def main():
         if new_processes and token and chat_id:
             sent_ids = []
             for item in new_processes:
-                message = "📢 Nueva oportunidad en HonduCompras\\n\\n" + item["text"]
+                message = "📢 Nueva oportunidad en HonduCompras\n\n" + item["text"]
                 if item["url"]:
-                    message += "\\n\\nVer proceso: " + item["url"]
+                    message += "\n\nVer proceso: " + item["url"]
                 telegram_send(token, chat_id, message[:4000])
                 sent_ids.append(item["id"])
             seen.update(sent_ids)
